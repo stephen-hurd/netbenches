@@ -10,11 +10,9 @@ data_2_ministat () {
 	# Convert raw data file from bench-lab.sh for list
 	# $1 : Input file
 	# $2 : Prefix of the output file
-	local LINES=$(wc -l $1)
-	LINES=$(echo ${LINES} | cut -d ' ' -f1)
-	# Remove the first 15 lines (garbage or not good result) and the 10 last lines (bad result too)
+	# Remove everything by main_thread output
 	CLEAN_ONE=$(mktemp /tmp/clean.1.data.XXXXXX) || die "can't create /tmp/clean.1.data.xxxx"
-	head -n $(expr ${LINES} - 10) $1 | tail -n $(expr ${LINES} - 10 - 15) > ${CLEAN_ONE}
+	grep ' main_thread ' $1 > ${CLEAN_ONE}
 	# Filter the output (still filtering "0 pps" lines in case of) and kept only the numbers:
 	# example of good line:
 	# 290.703575 main_thread [1441] 729113 pps (730571 pkts in 1002000 usec)
