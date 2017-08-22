@@ -58,6 +58,8 @@ BENCH_ITER_TOTAL=0
 MAIL="root@localhost"
 # PMC mode (collect hwpmc data)
 PMC=false
+# DTRACE mode (collect dtrace data)
+DTRACE=false
 
 # An usefull function (from: http://code.google.com/p/sh-die/)
 die() { echo -n "EXIT: " >&2; echo "$@" >&2; exit 1; }
@@ -76,18 +78,20 @@ rcmd () {
 reboot_host () {
 	# Reboot host $1 (DUT_ADMIN or REF_ADMIN)
 	# Need to wait an online return before continuing too
-	echo -n "Rebooting $1 and waiting device return online..."
-	# WARNING: If configuration was not saved, it will ask user for configuration saving
-	rcmd $1 'shutdown -r +1s' > /dev/null 2>&1
-	sleep 20
-	#wait-for-dut online and in forwarding mode
-	local TIMEOUT=${REBOOT_TIMEOUT}
-	while ! rcmd $1 "netstat -rn" > /dev/null 2>&1; do
-		sleep 5
-		TIMEOUT=$(( ${TIMEOUT} - 1 ))
-		[ ${TIMEOUT} -eq 0 ] && die "$1 not reachable mode after $(( ${REBOOT_TIMEOUT} * 5 )) seconds"
-	done
-	echo "done"
+	if [ "${NO_REBOOT}" = "" ]; then
+		echo -n "Rebooting $1 and waiting device return online..."
+		# WARNING: If configuration was not saved, it will ask user for configuration saving
+		rcmd $1 'shutdown -r +1s' > /dev/null 2>&1
+		sleep 20
+		#wait-for-dut online and in forwarding mode
+		local TIMEOUT=${REBOOT_TIMEOUT}
+		while ! rcmd $1 "netstat -rn" > /dev/null 2>&1; do
+			sleep 5
+			TIMEOUT=$(( ${TIMEOUT} - 1 ))
+			[ ${TIMEOUT} -eq 0 ] && die "$1 not reachable mode after $(( ${REBOOT_TIMEOUT} * 5 )) seconds"
+		done
+		echo "done"
+	fi
 	return 0
 }
 
@@ -191,12 +195,26 @@ bench () {
 	# Benching script
 	# $1: Directory/prefix-name of output log file
 	echo "Start bench serie `basename $1`"
+
+
+	if ($PMC || $DTRACE); then
+		rcmd ${DUT_ADMIN} "mdconfig -s 1g -u md7" || die "Can't create md7"
+		rcmd ${DUT_ADMIN} "newfs -U /dev/md7" || die "Can't create ffs on md7"
+		rcmd ${DUT_ADMIN} "mount /dev/md7 /mnt" || die "Can't mount md7"
+	fi
+
 	if ($PMC); then
 		rcmd ${DUT_ADMIN} "kldstat -qm hwpmc || kldload hwpmc" || die "Can't load hwmpc"
-		rcmd ${DUT_ADMIN} "mount | grep -q '/data' || mount /data" || die "Can't mount /data"
-		rcmd ${DUT_ADMIN} "pmcstat -S ${PMC_EVENT} -l 20 -O /data/pmc.out" >> $1.pmc.log &
+		rcmd ${DUT_ADMIN} "pmcstat -S ${PMC_EVENT} -l 20 -O /mnt/pmc.out" >> $1.pmc.log &
 		JOB_PMC=$!
 	fi
+
+	if ($DTRACE); then
+		rcmd ${DUT_ADMIN} "kldstat -qm dtraceall || kldload dtraceall" || die "Can't load dtraceall"
+		rcmd ${DUT_ADMIN} "dtrace -x stackframes=100 -n \"profile-197 /arg0/ { @[stack()] = count(); } tick-20s { exit(0); }\" -o /mnt/out.stacks" >> $1.dtrace.log 2>&1 &
+		JOB_DTRACE=$!
+	fi
+
 	#start receiving tool on RECEIVER
 	if [ -n "${RECEIVER_START_CMD}" ]; then
 		echo "CMD: ${RECEIVER_START_CMD}" > $1.receiver
@@ -231,10 +249,19 @@ bench () {
 
 	if ($PMC); then
 		wait ${JOB_PMC}
-		rcmd ${DUT_ADMIN} "pmcstat -R /data/pmc.out -z16 -G /data/pmc.graph" >> $1.pmc.log || die "can't convert pmc.out to pmc.graph"
-		scp ${SSH_USER}@${DUT_ADMIN}:/data/pmc.out $1.pmc.out >> $1.pmc.log 2>&1 || die "can't download pmc.out"
-		scp ${SSH_USER}@${DUT_ADMIN}:/data/pmc.graph $1.pmc.graph >> $1.pmc.log 2>&1 || die "can't download pmc.graph"
-		rcmd ${DUT_ADMIN} "rm /data/pmc.out && rm /data/pmc.graph && umount /data" >> $1.pmc.log || echo "Can't delete old data files"
+		rcmd ${DUT_ADMIN} "pmcstat -R /mnt/pmc.out -z16 -G /mnt/pmc.graph" >> $1.pmc.log || die "can't convert pmc.out to pmc.graph"
+		scp ${SSH_USER}@${DUT_ADMIN}:/mnt/pmc.out $1.pmc.out >> $1.pmc.log 2>&1 || die "can't download pmc.out"
+		scp ${SSH_USER}@${DUT_ADMIN}:/mnt/pmc.graph $1.pmc.graph >> $1.pmc.log 2>&1 || die "can't download pmc.graph"
+	fi
+
+	if ($DTRACE); then
+		wait ${JOB_DTRACE}
+		scp ${SSH_USER}@${DUT_ADMIN}:/mnt/out.stacks $1.out.stacks >> $1.dtrace.log 2>&1 || die "can't download out.stacks"
+	fi
+
+	if ($PMC || $DTRACE); then
+		rcmd ${DUT_ADMIN} "umount /mnt"
+		rcmd ${DUT_ADMIN} "mdconfig -d -u md7"
 	fi
 
 	echo "done"
@@ -349,14 +376,15 @@ usage () {
  -n iteration:               Number of iteration to do for each bench (3 minimums, 5 by default)
  -d benchs-results-dir:      Directory Where to store benches results (/tmp/benchs by default)
  -r e@mail:                  Email to send report too at the end (default root@localhost)
- -P :                        PMC collection mode"
+ -P :                        PMC collection mode
+ -D :                        DTrace collection mode"
 		exit 1 
 	fi
 }
 
 ##### Main
 
-args=`getopt c:d:f:i:hn:r:Pp: $*`
+args=`getopt c:d:f:i:hn:r:Pp:D $*`
 
 set -- $args
 for i
@@ -387,7 +415,7 @@ do
 		shift
 		;;
 	-n)
-		(${PMC}) || BENCH_ITER=$2	
+		(${PMC} || ${DTRACE}) || BENCH_ITER=$2	
 		shift
 		shift
 		;;
@@ -404,6 +432,11 @@ do
 	-P)
 		BENCH_ITER=1
 		PMC=true
+		shift
+		;;
+	-D)
+		BENCH_ITER=1
+		DTRACE=true
 		shift
 		;;
 	--)
@@ -424,7 +457,7 @@ fi
 [ -n ${IMAGES_DIR} ] && [ -d ${IMAGES_DIR} ] || die "Can't found directory ${IMAGES_DIR}"
 [ -n ${RESULTS_DIR} ] && [ -d ${RESULTS_DIR} ] || die "Can't found directory ${RESULTS_DIR}"
 [ -n ${CONFIG_SET_DIR} ] && [ -d ${CONFIG_SET_DIR} ] || die "Can't found directory ${CONFIG_SET_DIR}"
-!($PMC) && [ ${BENCH_ITER} -lt 3 ] && die "Need a minimum of 3 series of benchs"
+!($PMC || $DTRACE) && [ ${BENCH_ITER} -lt 3 ] && die "Need a minimum of 3 series of benchs"
 
 # Load (first time) the configuration set
 . ${CONFIG_FILE}
@@ -449,6 +482,7 @@ echo -n " - Multiples pkt-gen configuration to test: "
 echo " - Number of iteration for each set: ${BENCH_ITER}"
 echo " - Results dir: ${RESULTS_DIR}"
 (${PMC}) && echo " - PMC mode: Will collect PMC data"
+(${DTRACE}) && echo " - DTrace mode: Will collect DTrace data"
 echo ""
 
 ls ${RESULTS_DIR} | grep -q bench && die "You really should clean-up all previous reports in ${RESULTS_DIR} before to mismatch your differents results"
