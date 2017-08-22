@@ -46,6 +46,8 @@ CONFIG_FILE=''
 CONFIG_SET_DIR=''
 # Directory containing nanobsd upgrade image 
 IMAGES_DIR=''
+# File containing a list of kernels to test against
+KERNEL_LIST=''
 # Directory containing pkg-gen configuration file
 PKTGEN_DIR=''
 # Directory containing Bench results
@@ -78,21 +80,28 @@ rcmd () {
 reboot_host () {
 	# Reboot host $1 (DUT_ADMIN or REF_ADMIN)
 	# Need to wait an online return before continuing too
-	if [ "${NO_REBOOT}" = "" ]; then
-		echo -n "Rebooting $1 and waiting device return online..."
-		# WARNING: If configuration was not saved, it will ask user for configuration saving
-		rcmd $1 'shutdown -r +1s' > /dev/null 2>&1
-		sleep 20
-		#wait-for-dut online and in forwarding mode
-		local TIMEOUT=${REBOOT_TIMEOUT}
-		while ! rcmd $1 "netstat -rn" > /dev/null 2>&1; do
-			sleep 5
-			TIMEOUT=$(( ${TIMEOUT} - 1 ))
-			[ ${TIMEOUT} -eq 0 ] && die "$1 not reachable mode after $(( ${REBOOT_TIMEOUT} * 5 )) seconds"
-		done
-		echo "done"
-	fi
+	echo -n "Rebooting $1 and waiting device return online..."
+	# WARNING: If configuration was not saved, it will ask user for configuration saving
+	rcmd $1 'shutdown -r +1s' > /dev/null 2>&1
+	sleep 20
+	#wait-for-dut online and in forwarding mode
+	local TIMEOUT=${REBOOT_TIMEOUT}
+	while ! rcmd $1 "netstat -rn" > /dev/null 2>&1; do
+		sleep 5
+		TIMEOUT=$(( ${TIMEOUT} - 1 ))
+		[ ${TIMEOUT} -eq 0 ] && die "$1 not reachable mode after $(( ${REBOOT_TIMEOUT} * 5 )) seconds"
+	done
+	echo "done"
 	return 0
+}
+
+load_kernel () {
+	# Check if the existing kernel is the desired one.
+	rkernel=`rcmd ${DUT_ADMIN} "sysctl -n kern.bootfile"`
+	if [ "${rkernel}" != "/boot/$1/kernel" ]; then
+		rcmd ${DUT_ADMIN} "sysrc -f /boot/loader.conf kernel=$1"
+		reboot_host ${DUT_ADMIN}
+	fi
 }
 
 bench_image () {
@@ -114,6 +123,13 @@ bench_image () {
 			# Then we need to force a reboot here
 			(${COUNTING}) || reboot_host ${DUT_ADMIN}
 			
+			bench_cfg $1.${IMAGE_PREFIX}
+		done
+	elif [ -f "${KERNEL_LIST}" ]; then
+		for KERNEL in $(cat ${KERNEL_LIST}); do
+			(${COUNTING}) || echo "Start kernel: ${KERNEL}"
+			IMAGE_PREFIX=${KERNEL}
+			(${COUNTING}) || load_kernel ${KERNEL}
 			bench_cfg $1.${IMAGE_PREFIX}
 		done
 	else
@@ -275,7 +291,9 @@ bench () {
 	# because after this last, it will be rebooted outside this function
 	[ ${BENCH_ITER_COUNTER} -eq ${BENCH_ITER} ] && return 0	
 	
-	reboot_host ${DUT_ADMIN}
+	if [ "${NO_REBOOT}" = "" ]; then
+		reboot_host ${DUT_ADMIN}
+	fi
 	return 0
 }
 
@@ -384,7 +402,7 @@ usage () {
 
 ##### Main
 
-args=`getopt c:d:f:i:hn:r:Pp:D $*`
+args=`getopt c:Dd:f:hi:k:n:Pp:r: $*`
 
 set -- $args
 for i
@@ -393,6 +411,11 @@ do
 	-c)
 		CONFIG_SET_DIR=$2
 		shift
+		shift
+		;;
+	-D)
+		BENCH_ITER=1
+		DTRACE=true
 		shift
 		;;
 	-d)
@@ -405,22 +428,22 @@ do
 		shift
 		shift
 		;;	
+	-h)
+		usage
+		shift
+		;;
         -i)
 		IMAGES_DIR="$2"
 		shift
 		shift
 		;;
-	-h)
-		usage
+	-k)
+		KERNEL_LIST="$2"
+		shift
 		shift
 		;;
 	-n)
 		(${PMC} || ${DTRACE}) || BENCH_ITER=$2	
-		shift
-		shift
-		;;
-	-r)
-		MAIL="$2"
 		shift
 		shift
 		;;
@@ -434,9 +457,9 @@ do
 		PMC=true
 		shift
 		;;
-	-D)
-		BENCH_ITER=1
-		DTRACE=true
+	-r)
+		MAIL="$2"
+		shift
 		shift
 		;;
 	--)
@@ -455,9 +478,11 @@ fi
 [ -f ${CONFIG_FILE} ] || die "Can't found configuration file"
 [ -n ${PKTGEN_DIR} ] && [ -d ${PKTGEN_DIR} ] || die "Can't found directory ${PKTGEN_DIR}"
 [ -n ${IMAGES_DIR} ] && [ -d ${IMAGES_DIR} ] || die "Can't found directory ${IMAGES_DIR}"
+[ -f ${KERNEL_LIST} ] || die "Can't found kernel list file"
 [ -n ${RESULTS_DIR} ] && [ -d ${RESULTS_DIR} ] || die "Can't found directory ${RESULTS_DIR}"
 [ -n ${CONFIG_SET_DIR} ] && [ -d ${CONFIG_SET_DIR} ] || die "Can't found directory ${CONFIG_SET_DIR}"
 !($PMC || $DTRACE) && [ ${BENCH_ITER} -lt 3 ] && die "Need a minimum of 3 series of benchs"
+[ "${IMAGES_DIR}" = "" -o "${KERNEL_LIST}" = "" ] || die "Can't have both image and kernel list"
 
 # Load (first time) the configuration set
 . ${CONFIG_FILE}
@@ -475,6 +500,8 @@ echo ""
 echo "This script will start ${BENCH_ITER_TOTAL} bench tests using:"
 echo -n " - Multiples images to test: "
 [ -z "${IMAGES_DIR}" ] && echo "no" || echo "yes"
+echo -n " - Multiples kernels to test: "
+[ -z "${KERNEL_LIST}" ] && echo "no" || echo "yes"
 echo -n " - Multiples configuration-sets to test: "
 [ -z "${CONFIG_SET_DIR}" ] && echo "no" || echo "yes"
 echo -n " - Multiples pkt-gen configuration to test: "
