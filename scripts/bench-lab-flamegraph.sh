@@ -19,22 +19,22 @@ found=false
 for i in stackcollapse-pmc.pl flamegraph.pl; do
 	[ -f $i ] && die "Didn't found $i into ${flamepath}"
 done
-for i in ${dir}/*.graph; do
-	if [ $i = "${dir}/*.graph" ]; then
+for i in ${dir}/*.1.pmc.graph; do
+	if [ $i = "${dir}/*.1.pmc.graph" ]; then
 		echo "No .graph files found"
 		return
 	fi
 	found=true
-	prefix=${i%.graph}
+	prefix=${i%.1.pmc.graph}
 	read graph_title < $i
 	title=`basename ${prefix}`
 	title="${title#bench.} - ${graph_title}"
 	if [ -z "${filter}" ]; then
-		${flamepath}/stackcollapse-pmc.pl $i > ${prefix}.stack
+		cat ${prefix}.*.pmc.graph | ${flamepath}/stackcollapse-pmc.pl > ${prefix}.stack
 	else
-		${flamepath}/stackcollapse-pmc.pl $i | grep -v ${filter} > ${prefix}.stack
+		cat ${prefix}.*.pmc.graph | ${flamepath}/stackcollapse-pmc.pl | grep -v ${filter} > ${prefix}.stack
 	fi
-	${flamepath}/flamegraph.pl --title="${title}" ${prefix}.stack > ${prefix}.svg
+	${flamepath}/flamegraph.pl --title="${title}" ${prefix}.stack > ${prefix}.pmc.svg
 done
 ($found) && echo "Done" || echo "No .graph files found"
 }
@@ -44,16 +44,16 @@ found=false
 for i in stackcollapse.pl flamegraph.pl; do
 	[ -f $i ] && die "Didn't found $i into ${flamepath}"
 done
-for i in ${dir}/*.stacks; do
-	if [ $i = "${dir}/*.stacks" ]; then
+for i in ${dir}/*.1.out.stacks; do
+	if [ $i = "${dir}/*.1.out.stacks" ]; then
 		echo "No .stacks files found"
 		return
 	fi
 	found=true
-	prefix=${i%.stacks}
+	prefix=${i%.1.out.stacks}
 	title=`basename ${prefix}`
 	title="${title#bench.} DTrace output"
-	${flamepath}/stackcollapse.pl $i | ${flamepath}/flamegraph.pl --title="${title}" > ${prefix}.svg
+	cat ${prefix}.*.out.stacks | ${flamepath}/stackcollapse.pl | ${flamepath}/flamegraph.pl --title="${title}" > ${prefix}.dtrace.svg
 done
 ($found) && echo "Done" || echo "No .stacks files found"
 }
