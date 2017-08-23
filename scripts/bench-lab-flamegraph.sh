@@ -26,12 +26,15 @@ for i in ${dir}/*.graph; do
 	fi
 	found=true
 	prefix=${i%.graph}
+	read graph_title < $i
+	title=`basename ${prefix}`
+	title="${title#bench.} - ${graph_title}"
 	if [ -z "${filter}" ]; then
 		${flamepath}/stackcollapse-pmc.pl $i > ${prefix}.stack
 	else
 		${flamepath}/stackcollapse-pmc.pl $i | grep -v ${filter} > ${prefix}.stack
 	fi
-	${flamepath}/flamegraph.pl ${prefix}.stack > ${prefix}.svg
+	${flamepath}/flamegraph.pl --title="${title}" ${prefix}.stack > ${prefix}.svg
 done
 ($found) && echo "Done" || echo "No .graph files found"
 }
@@ -48,7 +51,9 @@ for i in ${dir}/*.stacks; do
 	fi
 	found=true
 	prefix=${i%.stacks}
-	${flamepath}/stackcollapse.pl $i | ${flamepath}/flamegraph.pl > ${prefix}.svg
+	title=`basename ${prefix}`
+	title="${title#bench.} DTrace output"
+	${flamepath}/stackcollapse.pl $i | ${flamepath}/flamegraph.pl --title="${title}" > ${prefix}.svg
 done
 ($found) && echo "Done" || echo "No .stacks files found"
 }
