@@ -432,7 +432,6 @@ do
 		shift
 		;;
 	-D)
-		BENCH_ITER=1
 		DTRACE=true
 		shift
 		;;
