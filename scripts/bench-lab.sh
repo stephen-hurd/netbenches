@@ -282,6 +282,7 @@ bench () {
 	if ($PMC); then
 		wait ${JOB_PMC}
 		rcmd ${DUT_ADMIN} "pmcstat -R /mnt/pmc.out -z16 -G /mnt/pmc.graph" >> $1.pmc.log || die "can't convert pmc.out to pmc.graph"
+		rcmd ${DUT_ADMIN} "pmcannotate -a -k \`sysctl -n kern.bootfile | xargs dirname\` /mnt/pmc.out \`sysctl -n kern.bootfile\`" > $1.pmc.annotate
 		scp ${SSH_USER}@${DUT_ADMIN}:/mnt/pmc.out $1.pmc.out >> $1.pmc.log 2>&1 || die "can't download pmc.out"
 		scp ${SSH_USER}@${DUT_ADMIN}:/mnt/pmc.graph $1.pmc.graph >> $1.pmc.log 2>&1 || die "can't download pmc.graph"
 	fi
