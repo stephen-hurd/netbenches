@@ -155,6 +155,10 @@ bench_cfg () {
 			else
 				(${COUNTING}) || upload_cfg ${CFG} ${DUT_ADMIN} || die "Can't upload ${CFG} to ${DUT_ADMIN}"
 			fi
+			# If KERNEL is set, fix up loader.conf
+			if [ -n "${KERNEL}" ]; then
+				(${COUNTING}) || rcmd ${DUT_ADMIN} "sysrc -f /boot/loader.conf kernel=${KERNEL}"
+			fi
 			(${COUNTING}) || reboot_host ${DUT_ADMIN}
 			bench_pktgen $1.${CFG_PREFIX}
 		done
@@ -314,20 +318,22 @@ upload_cfg () {
 	# $1: Path to the directory that contains configuration files
 	# $2: Device to upload to (DUT_ADMIN or REF_ADMIN)
 	echo "Uploading cfg $1 to $2"
-	if [ -d $1/boot ]; then
-		# Before putting file in /boot, we need to remount in RW mode
-		if ! rcmd $2 "mount -uw /" > /dev/null 2>&1; then
-			return 1
-		fi
-	fi
+	# Some systems may need to remount /boot rw... we should likely check mount output
+	#if [ -d $1/boot ]; then
+	#	# Before putting file in /boot, we need to remount in RW mode
+	#	if ! rcmd $2 "mount -uw /" > /dev/null 2>&1; then
+	#		return 1
+	#	fi
+	#fi
 	if ! scp -r -2 -o "PreferredAuthentications publickey" -o "StrictHostKeyChecking no" $1/* root@$2:/ > /dev/null 2>&1; then
 		return 1
 	fi
-	if rcmd $2 "config save" > /dev/null 2>&1; then
-		return 0
-	else
-		return 1
-	fi
+	# Not sure what this is...
+	#if rcmd $2 "config save" > /dev/null 2>&1; then
+	#	return 0
+	#else
+	#	return 1
+	#fi
 }
 
 icmp_test_all () {
@@ -455,7 +461,7 @@ do
 		shift
 		;;
 	-n)
-		(${PMC} || ${DTRACE}) || BENCH_ITER=$2	
+		BENCH_ITER=$2	
 		shift
 		shift
 		;;
@@ -465,7 +471,6 @@ do
 		shift
 		;;
 	-P)
-		BENCH_ITER=1
 		PMC=true
 		shift
 		;;
