@@ -28,7 +28,7 @@ for i in ${dir}/*.1.pmc.graph; do
 	prefix=${i%.1.pmc.graph}
 	read graph_title < $i
 	title=`basename ${prefix}`
-	title="${title#bench.} - ${graph_title}"
+	title="${title#bench.} ${graph_title% \[*\]}"
 	if [ -z "${filter}" ]; then
 		cat ${prefix}.*.pmc.graph | ${flamepath}/stackcollapse-pmc.pl > ${prefix}.stack
 	else
