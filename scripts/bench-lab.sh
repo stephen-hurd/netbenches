@@ -232,6 +232,9 @@ bench () {
 	fi
 
 	#start receiving tool on RECEIVER
+	if [ -n "${DUT_LAB_SYSCTL_RECEIVER_SIDE}" ]; then
+		rcmd ${DUT_ADMIN} "sysctl ${DUT_LAB_SYSCTL_RECEIVER_SIDE}" > $1.dev-receiverside.start
+	fi
 	if [ -n "${RECEIVER_START_CMD}" ]; then
 		echo "CMD: ${RECEIVER_START_CMD}" > $1.receiver
 		rcmd ${RECEIVER_ADMIN} "${RECEIVER_START_CMD}" >> $1.receiver 2>&1 &
@@ -239,6 +242,9 @@ bench () {
 	fi	
 	#Alternate method with log file stored on RECEIVER (if tool is verbose)	
 	#rcmd ${RECEIVER_ADMIN} "nohup netreceive 9090 \>\& /tmp/bench.log.receiver \&"
+	if [ -n "${DUT_LAB_SYSCTL_SENDER_SIDE}" ]; then
+		rcmd ${DUT_ADMIN} "sysctl ${DUT_LAB_SYSCTL_SENDER_SIDE}" > $1.dev-senderside.start
+	fi
 	echo "CMD: ${SENDER_START_CMD}" > $1.sender
 	rcmd ${SENDER_ADMIN} "${SENDER_START_CMD}" >> $1.sender 2>&1 &
 	JOB_SENDER=$!
@@ -256,8 +262,14 @@ bench () {
 	#else
 		wait ${JOB_SENDER}
 	#fi
+	if [ -n "${DUT_LAB_SYSCTL_SENDER_SIDE}" ]; then
+		rcmd ${DUT_ADMIN} "sysctl ${DUT_LAB_SYSCTL_SENDER_SIDE}" > $1.dev-senderside.end
+	fi
 	if [ -n "${RECEIVER_STOP_CMD}" ]; then
 		rcmd ${RECEIVER_ADMIN} "${RECEIVER_STOP_CMD}" || echo "DEBUG: Can't kill pkt-gen"
+	fi
+	if [ -n "${DUT_LAB_SYSCTL_RECEIVER_SIDE}" ]; then
+		rcmd ${DUT_ADMIN} "sysctl ${DUT_LAB_SYSCTL_RECEIVER_SIDE}" > $1.dev-receiverside.end
 	fi
 	
 	#scp ${RECEIVER_ADMIN}:/tmp/bench.log.receiver $1.receiver
@@ -291,7 +303,7 @@ bench () {
 	# because after this last, it will be rebooted outside this function
 	[ ${BENCH_ITER_COUNTER} -eq ${BENCH_ITER} ] && return 0	
 	
-	if [ "${NO_REBOOT}" = "" ]; then
+	if [ -z "${NO_REBOOT}" ]; then
 		reboot_host ${DUT_ADMIN}
 	fi
 	return 0
@@ -482,10 +494,19 @@ fi
 [ -n ${RESULTS_DIR} ] && [ -d ${RESULTS_DIR} ] || die "Can't found directory ${RESULTS_DIR}"
 [ -n ${CONFIG_SET_DIR} ] && [ -d ${CONFIG_SET_DIR} ] || die "Can't found directory ${CONFIG_SET_DIR}"
 !($PMC || $DTRACE) && [ ${BENCH_ITER} -lt 3 ] && die "Need a minimum of 3 series of benchs"
-[ "${IMAGES_DIR}" = "" -o "${KERNEL_LIST}" = "" ] || die "Can't have both image and kernel list"
+[ -z "${IMAGES_DIR}" -o -z "${KERNEL_LIST}" ] || die "Can't have both image and kernel list"
 
 # Load (first time) the configuration set
 . ${CONFIG_FILE}
+
+# Parse some things...
+if [ -n ${DUT_LAB_IF_SENDER_SIDE} -a -n ${DUT_LAB_IF_SENDER_SIDE} ]; then
+	DUT_LAB_SYSCTL_SENDER_SIDE=dev.`echo ${DUT_LAB_IF_SENDER_SIDE} | sed -E 's/(.*)([0-9]+)/\1.\2/'`
+fi
+if [ -n ${DUT_LAB_IF_RECEIVER_SIDE} -a -n ${DUT_LAB_IF_RECEIVER_SIDE} ]; then
+	DUT_LAB_SYSCTL_RECEIVER_SIDE=dev.`echo ${DUT_LAB_IF_RECEIVER_SIDE} | sed -E 's/(.*)([0-9]+)/\1.\2/'`
+fi
+
 
 # Calculating the number of test to do
 
