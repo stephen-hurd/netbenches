@@ -496,7 +496,7 @@ fi
 [ -n ${PKTGEN_DIR} ] && [ -d ${PKTGEN_DIR} ] || die "Can't found directory ${PKTGEN_DIR}"
 [ -n ${IMAGES_DIR} ] && [ -d ${IMAGES_DIR} ] || die "Can't found directory ${IMAGES_DIR}"
 [ -f ${KERNEL_LIST} ] || die "Can't found kernel list file"
-[ -n ${RESULTS_DIR} ] && [ -d ${RESULTS_DIR} ] || die "Can't found directory ${RESULTS_DIR}"
+[ -n ${RESULTS_DIR} ] && [ -d ${RESULTS_DIR} ] || mkdir -p ${RESULTS_DIR} && echo "Creating ${RESULTS_DIR}" || die "Can't found directory ${RESULTS_DIR}"
 [ -n ${CONFIG_SET_DIR} ] && [ -d ${CONFIG_SET_DIR} ] || die "Can't found directory ${CONFIG_SET_DIR}"
 !($PMC || $DTRACE) && [ ${BENCH_ITER} -lt 3 ] && die "Need a minimum of 3 series of benchs"
 [ -z "${IMAGES_DIR}" -o -z "${KERNEL_LIST}" ] || die "Can't have both image and kernel list"
