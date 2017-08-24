@@ -218,9 +218,9 @@ bench () {
 
 
 	if ($PMC || $DTRACE); then
-		rcmd ${DUT_ADMIN} "mdconfig -s 1g -u md7" || die "Can't create md7"
-		rcmd ${DUT_ADMIN} "newfs -U /dev/md7" || die "Can't create ffs on md7"
-		rcmd ${DUT_ADMIN} "mount /dev/md7 /mnt" || die "Can't mount md7"
+		rcmd ${DUT_ADMIN} "mdconfig -s 1g -u md7" > /dev/null 2>&1 || die "Can't create md7"
+		rcmd ${DUT_ADMIN} "newfs -U /dev/md7" > /dev/null 2>&1 || die "Can't create ffs on md7"
+		rcmd ${DUT_ADMIN} "mount /dev/md7 /mnt" > /dev/null 2>&1 || die "Can't mount md7"
 	fi
 
 	if ($PMC); then
@@ -293,8 +293,8 @@ bench () {
 	fi
 
 	if ($PMC || $DTRACE); then
-		rcmd ${DUT_ADMIN} "umount /mnt"
-		rcmd ${DUT_ADMIN} "mdconfig -d -u md7"
+		rcmd ${DUT_ADMIN} "umount /mnt" > /dev/null 2>&1
+		rcmd ${DUT_ADMIN} "mdconfig -d -u md7" > /dev/null 2>&1
 	fi
 
 	echo "done"
