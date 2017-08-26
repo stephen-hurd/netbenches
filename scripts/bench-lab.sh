@@ -225,14 +225,19 @@ bench () {
 
 	if ($PMC); then
 		rcmd ${DUT_ADMIN} "kldstat -qm hwpmc || kldload hwpmc" || die "Can't load hwmpc"
-		rcmd ${DUT_ADMIN} "pmcstat -S ${PMC_EVENT} -l 20 -O /mnt/pmc.out" >> $1.pmc.log &
-		JOB_PMC=$!
 	fi
 
 	if ($DTRACE); then
 		rcmd ${DUT_ADMIN} "kldstat -qm dtraceall || kldload dtraceall" || die "Can't load dtraceall"
-		rcmd ${DUT_ADMIN} "dtrace -x stackframes=100 -n \"profile-197 /arg0/ { @[stack()] = count(); } tick-20s { exit(0); }\" -o /mnt/out.stacks" >> $1.dtrace.log 2>&1 &
-		JOB_DTRACE=$!
+	fi
+
+	# pmcstat needs to start before the load or it doesn't get enough samples and what it
+	# does get are useless.
+	if ($PMC); then
+		echo -n starting PMC...
+		rcmd ${DUT_ADMIN} "pmcstat -S ${PMC_EVENT} -l 20 -O /mnt/pmc.out" >> $1.pmc.log &
+		echo done.
+		JOB_PMC=$!
 	fi
 
 	#start receiving tool on RECEIVER
@@ -244,6 +249,7 @@ bench () {
 		rcmd ${RECEIVER_ADMIN} "${RECEIVER_START_CMD}" >> $1.receiver 2>&1 &
 		#JOB_RECEIVER=$!
 	fi	
+
 	#Alternate method with log file stored on RECEIVER (if tool is verbose)	
 	#rcmd ${RECEIVER_ADMIN} "nohup netreceive 9090 \>\& /tmp/bench.log.receiver \&"
 	if [ -n "${DUT_LAB_SYSCTL_SENDER_SIDE}" ]; then
@@ -252,20 +258,21 @@ bench () {
 	echo "CMD: ${SENDER_START_CMD}" > $1.sender
 	rcmd ${SENDER_ADMIN} "${SENDER_START_CMD}" >> $1.sender 2>&1 &
 	JOB_SENDER=$!
+
+	sleep 8
+
+	# But we can start DTrace after the load with no problem.
+	if ($DTRACE); then
+		echo -n starting DTrace...
+		rcmd ${DUT_ADMIN} "dtrace -x stackframes=100 -n \"profile-197 /arg0/ { @[stack()] = count(); } tick-20s { exit(0); }\" -o /mnt/out.stacks" >> $1.dtrace.log 2>&1 &
+		echo done.
+		JOB_DTRACE=$!
+	fi
+
 	echo -n "Waiting for end of bench ${BENCH_RUNNING_COUNTER}/${BENCH_ITER_TOTAL}..."
-	#if echo ${SENDER_START_CMD} | grep -q pkt-gen; then
-		# There is a bug with pkt-gen: It can sometime never end after finishing sending all packets,
-		# because stuck at "sender_body [1214] pending tx tail 511 head 2047 on ring 2"
-		# Then this simple wait command didn't works:
-		#wait ${JOB_SENDER}
-		# in place, will look every 2 second for "flush tail" in the sender log
-	#	while true; do
-	#		sleep 2
-	#		grep -q 'flush tail' $1.sender && break
-	#	done
-	#else
-		wait ${JOB_SENDER}
-	#fi
+
+	wait ${JOB_SENDER}
+
 	if [ -n "${DUT_LAB_SYSCTL_SENDER_SIDE}" ]; then
 		rcmd ${DUT_ADMIN} "sysctl ${DUT_LAB_SYSCTL_SENDER_SIDE}" > $1.dev-senderside.end
 	fi
