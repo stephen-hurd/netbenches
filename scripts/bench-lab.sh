@@ -259,7 +259,7 @@ bench () {
 	rcmd ${SENDER_ADMIN} "${SENDER_START_CMD}" >> $1.sender 2>&1 &
 	JOB_SENDER=$!
 
-	sleep 8
+	sleep 5
 
 	# But we can start DTrace after the load with no problem.
 	if ($DTRACE); then
@@ -412,10 +412,12 @@ usage () {
 	if [ $# -lt 1 ]; then
 		echo "$0 [-h] [-f bench-lab-config] [-c configuration-sets-dir] [-i nanobsd-images-dir]"
 		echo "   [-n iteration] [-p pktgen cfg dir ] [-d benchs-results-dir] [-P] -r e@mail"
+		echo "   [-k kernel-set-file] [-D]"
 		echo "
  -f bench-lab-config:        Text file with lab bench parameters (mandatory)
  -i nanobsd-images-dir:      Directory where are stored nanobsd update images (optional)
  -c configuration-sets-dir:  Directory where are stored configuration sets (optional)
+ -k kernel-set-file:         File containing a list of kernel names (optional)
  -p pkgen-cfg-dir:           Directory where specific pkt-gen parameters are (optional)
  -n iteration:               Number of iteration to do for each bench (3 minimums, 5 by default)
  -d benchs-results-dir:      Directory Where to store benches results (/tmp/benchs by default)
